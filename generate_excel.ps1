@@ -1,4 +1,9 @@
 #Requires -Module ImportExcel
+#Requires -Version 7.0
+
+$MOD="ImportExcel"
+
+
 
 # This script generates an Excel file that mimics the vns-template.xlsx file.
 # It manually builds the Excel package using the EPPlus API to ensure stability and control.
@@ -56,6 +61,8 @@ $correctHeaders = @(
 )
 
 # Define a unique output path to prevent file lock issues.
+$fontMSPGothic = 'ＭＳ Ｐゴシック'
+$fontYuGothic = '游ゴシック'
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 $outputPath = ".\vns_report_$timestamp.xlsx"
 $fileInfo = New-Object System.IO.FileInfo $outputPath
@@ -88,13 +95,13 @@ $ws.Column(1).Width = 7.75; $ws.Column(2).Width = 19.33; $ws.Column(3).Width = 9
 $ws.Row(1).Height = 39; $ws.Row(1).CustomHeight = $true
 for ($i = 2; $i -le ($dataRowCount + 1); $i++) { $ws.Row($i).CustomHeight = $true; $ws.Row($i).Height = 18 }
 $headerRange = $ws.Cells["A1:N1"]
-$headerRange.Style.Font.Name = 'ＭＳ Ｐゴシック'
+$headerRange.Style.Font.Name = $fontMSPGothic
 $headerRange.Style.Font.Bold = $true
 $headerRange.Style.WrapText = $true
 $headerRange.Style.Font.Color.SetColor([System.Drawing.ColorTranslator]::FromHtml('#FFFFFF'))
 $headerRange.Style.Fill.PatternType = [OfficeOpenXml.Style.ExcelFillStyle]::Solid
 $headerRange.Style.Fill.BackgroundColor.SetColor([System.Drawing.ColorTranslator]::FromHtml('#2D7DCE'))
-$dataRange = $ws.Cells["A2:N$($dataRowCount + 1)"]; $dataRange.Style.Font.Name = '游ゴシック'; $dataRange.Style.Font.Size = 11;
+$dataRange = $ws.Cells["A2:N$($dataRowCount + 1)"]; $dataRange.Style.Font.Name = $fontYuGothic; $dataRange.Style.Font.Size = 11;
 $ws.Cells[$totalRange].Style.Border.Top.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
 $ws.Cells[$totalRange].Style.Border.Left.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
 $ws.Cells[$totalRange].Style.Border.Bottom.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
@@ -142,7 +149,7 @@ $TitleRow = $TopRow - 1
 $range="A$($TitleRow)"
 $ws.Cells[$range].Value = "凡例"
 $ws.Cells[$range].Style.Font.Bold = $true
-$ws.Cells[$range].Style.Font.Name = 'ＭＳ Ｐゴシック'
+$ws.Cells[$range].Style.Font.Name = $fontMSPGothic
 $ws.Cells[$range].Style.Font.Size = 11
 $ws.Row($TitleRow).CustomHeight = $true;
 $ws.Row($TitleRow).Height = 13
@@ -172,7 +179,7 @@ foreach ($item in $legendItems) {
     $ws.Cells["K$row"].Value = $item.Status
     #$ws.Cells[$rangeCenter].Style.Border.BorderAround([OfficeOpenXml.Style.ExcelBorderStyle]::Thin)
 
-    $ws.Cells[$range].Style.Font.Name = 'ＭＳ Ｐゴシック'
+    $ws.Cells[$range].Style.Font.Name = $fontMSPGothic
     $ws.Cells[$range].Style.Font.Size = 11
     $ws.Cells[$range].Style.Font.Bold = $false
     # Set the background color for the status cell
