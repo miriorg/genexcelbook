@@ -1,0 +1,11 @@
+#Excel workbook
+~$*.xlsx
+
+#logfiles
+*.log
+*.log.gz
+*.*audit.json*
+
+vns_report_*.xlsx
+
+logs/.464979f457de56b20075412cb483c56d6f3fcc11-audit.json
