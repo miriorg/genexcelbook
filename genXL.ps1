@@ -88,6 +88,19 @@ process {
             # 新しいオブジェクトの作成（元のプロパティを保持しつつ、新しい列を追加）
             $newRow = $row | Select-Object *
 
+            # Package列が '-Not affected-' の場合の処理
+            $pkgProp = $newRow.PSObject.Properties.Match('Package') | Select-Object -First 1
+            if ($pkgProp -and $pkgProp.Value -eq '-Not affected-') {
+                # Package列を空文字に設定
+                $pkgProp.Value = ''
+
+                # 処理結果列（影響有無）を '影響なし' に設定
+                $statusProp = $newRow.PSObject.Properties.Match('処理結果') | Select-Object -First 1
+                if ($statusProp) {
+                    $statusProp.Value = '影響なし'
+                }
+            }
+
             # 計算した列を追加
             $newRow | Add-Member -MemberType NoteProperty -Name '現行バージョン／更新版バージョン' -Value $versionText -Force
 
@@ -153,6 +166,135 @@ end {
             }
         }
         $columnsToDelete | Sort-Object -Descending | ForEach-Object { $ws.DeleteColumn($_) }
+
+        # ヘッダー行の文字列を generate_excel.ps1 の correctHeaders に変更
+        $correctHeaders = @(
+            "[JVN]`n区分", "[JVN]`n番号", "[JVN]`nタイトル", "[JVN]`nCVSS v3`n深刻度", "[JVN]`nCVSS v2`n深刻度",
+            "[JVN]`nCVSS v3 URL", "[JVN]`nCVSS v2 URL", "[JVN]`n更新日", "[JVN]`nCVE", "[Gauge]`nURL",
+            "影響有無", "対象パッケージ／ソフトウェア", "現行バージョン／`n更新版バージョン", ""
+        )
+        for ($i = 0; $i -lt $correctHeaders.Count; $i++) {
+            $ws.Cells[1, ($i + 1)].Value = $correctHeaders[$i]
+        }
+
+        # --- Step 3: 書式設定と条件付き書式 ---
+        Write-Host "Applying formatting..." -ForegroundColor Cyan
+
+        $fontMSPGothic = 'ＭＳ Ｐゴシック'
+        $fontYuGothic = '游ゴシック'
+        $dataRowCount = $script:processedData.Count
+        $lastCol = $ws.Dimension.End.Column
+
+        # オートフィルター
+        $ws.Cells["A1:N1"].AutoFilter = $true
+
+        # 列幅設定 (generate_excel.ps1 準拠)
+        $ws.Column(1).Width = 7.75
+        $ws.Column(2).Width = 19.33
+        $ws.Column(3).Width = 99.25
+        $ws.Column(4).Width = 11
+        $ws.Column(5).Width = 10.08
+        $ws.Column(6).Width = 33.16
+        $ws.Column(7).Width = 22.83
+        $ws.Column(11).Width = 29
+        $ws.Column(12).Width = 30
+        $ws.Column(13).Width = 30
+
+        # 行の高さ
+        $ws.Row(1).Height = 39
+        $ws.Row(1).CustomHeight = $true
+        for ($i = 2; $i -le ($dataRowCount + 1); $i++) {
+            $ws.Row($i).CustomHeight = $true
+            $ws.Row($i).Height = 18
+        }
+
+        # ヘッダー書式
+        $headerRange = $ws.Cells[1, 1, 1, $lastCol]
+        $headerRange.Style.Font.Name = $fontMSPGothic
+        $headerRange.Style.Font.Bold = $true
+        $headerRange.Style.WrapText = $true
+        $headerRange.Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Center
+        $headerRange.Style.Font.Color.SetColor([System.Drawing.ColorTranslator]::FromHtml('#FFFFFF'))
+        $headerRange.Style.Fill.PatternType = [OfficeOpenXml.Style.ExcelFillStyle]::Solid
+        $headerRange.Style.Fill.BackgroundColor.SetColor([System.Drawing.ColorTranslator]::FromHtml('#2D7DCE'))
+        $headerRange.Style.Border.Bottom.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Medium
+
+        # データエリア書式と罫線
+        $allRange = $ws.Cells[1, 1, ($dataRowCount + 1), $lastCol]
+        $allRange.Style.Border.Top.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+        $allRange.Style.Border.Left.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+        $allRange.Style.Border.Bottom.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+        $allRange.Style.Border.Right.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+
+        $dataRange = $ws.Cells[2, 1, ($dataRowCount + 1), $lastCol]
+        $dataRange.Style.Font.Name = $fontYuGothic
+        $dataRange.Style.Font.Size = 11
+
+        # 条件付き書式 (K列: 影響有無 を対象)
+        $cfRule1 = $ws.ConditionalFormatting.AddExpression($dataRange); $cfRule1.Formula = '$K2="修正版配布待ち"'; $cfRule1.Style.Fill.PatternType = 'Solid'; $cfRule1.Style.Fill.BackgroundColor.Color = [System.Drawing.ColorTranslator]::FromHtml('#F1A983')
+        $cfRule2 = $ws.ConditionalFormatting.AddExpression($dataRange); $cfRule2.Formula = '$K2="修正版適用待ち"'; $cfRule2.Style.Fill.PatternType = 'Solid'; $cfRule2.Style.Fill.BackgroundColor.Color = [System.Drawing.ColorTranslator]::FromHtml('#F1A983')
+        $cfRule3 = $ws.ConditionalFormatting.AddExpression($dataRange); $cfRule3.Formula = '$K2="更新版適用済"'; $cfRule3.Style.Fill.PatternType = 'Solid'; $cfRule3.Style.Fill.BackgroundColor.Color = [System.Drawing.ColorTranslator]::FromHtml('#92D050')
+
+        # --- Step 4: 凡例の追加 ---
+        Write-Host "Adding footer legend..." -ForegroundColor Cyan
+
+        # Legend data based on vns-sample.xlsx
+        $legendItems = @(
+            @{ Row = 0; Description = '脆弱性が修正された更新版パッケージが適用済みであるもの'; Status = '更新版適用済'; Color = '#92D050' },
+            @{ Row = 1; Description = '脆弱性が存在するものの、修正パッチがまだ配布されておらず、配布を待っている状態のもの。'; Status = '修正版配布待ち'; Color = '#F1A983' },
+            @{ Row = 2; Description = '修正パッチは配布されているが、まだ適用ができていないもの。（再起動を行わないと適用ができないものなど）'; Status = '修正版適用待ち'; Color = '#F1A983' },
+            @{ Row = 3; Description = '脆弱性が情報が存在するパッケージであるものの、該当パッケージをインストールしていないため、影響が発生しないもの。'; Status = '影響なし（未インストール）'; Color = $null },
+            @{ Row = 4; Description = '脆弱性が情報が存在するパッケージであるものの、該当OSには影響がないことを公式にて確認されているもの。'; Status = '影響なし（範囲外）'; Color = $null },
+            @{ Row = 5; Description = '該当OSでは利用されないパッケージ、ソフトウェアであるため、とくに確認対象とはならないもの。'; Status = '影響なし'; Color = $null }
+        )
+
+        $TopRow = $dataRowCount + 4 + ($legendItems | Measure-Object -Property Row -Minimum | Select-Object -ExpandProperty Minimum)
+        $BottomRow = $dataRowCount + 4 + ($legendItems | Measure-Object -Property Row -Maximum | Select-Object -ExpandProperty Maximum)
+        $TitleRow = $TopRow - 1
+        $range="A$($TitleRow)"
+        $ws.Cells[$range].Value = "凡例"
+        $ws.Cells[$range].Style.Font.Bold = $true
+        $ws.Cells[$range].Style.Font.Name = $fontMSPGothic
+        $ws.Cells[$range].Style.Font.Size = 11
+        $ws.Row($TitleRow).CustomHeight = $true;
+        $ws.Row($TitleRow).Height = 13
+
+        foreach ($item in $legendItems) {
+            $row = $dataRowCount + 4 + $item.Row
+
+            $ws.Row($TopRow).CustomHeight = $true;
+            $ws.Row($TopRow).Height = 13
+
+            # Merge cells D:J for the description, set value and style for proper display
+            $range="A$($row):M$($row)"
+            $rangeLeft="A$($row):C$($row)"
+            $rangeCenter="D$($row):J$($row)"
+            $rangeRight="K$($row):M$($row)"
+            $ws.Cells[$rangeCenter].Merge = $true
+            $ws.Cells[$rangeLeft].Style.Border.BorderAround([OfficeOpenXml.Style.ExcelBorderStyle]::Thin)
+            $ws.Cells[$rangeCenter].Style.Border.BorderAround([OfficeOpenXml.Style.ExcelBorderStyle]::Thin)
+            $ws.Cells[$rangeRight].Style.Border.BorderAround([OfficeOpenXml.Style.ExcelBorderStyle]::Thin)
+            $ws.Cells[$rangeRight].Style.Border.Right.Style = [OfficeOpenXml.Style.ExcelBorderStyle]::Thin
+
+            $ws.Cells[$rangeCenter].Value = $item.Description
+            $ws.Cells[$rangeCenter].Style.WrapText = $true
+            $ws.Cells[$rangeCenter].Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Top
+
+            # Add the status text to column K
+            $ws.Cells["K$row"].Value = $item.Status
+
+            $ws.Cells[$range].Style.Font.Name = $fontMSPGothic
+            $ws.Cells[$range].Style.Font.Size = 11
+            $ws.Cells[$range].Style.Font.Bold = $false
+            # Set the background color for the status cell
+            if ($item.Color) {
+                $ws.Cells[$range].Style.Fill.PatternType = [OfficeOpenXml.Style.ExcelFillStyle]::Solid
+                $ws.Cells[$range].Style.Fill.BackgroundColor.SetColor([System.Drawing.ColorTranslator]::FromHtml($item.Color))
+            }
+        }
+
+        $range="A$($TopRow):M$($BottomRow)"
+        $ws.Cells[$range].Style.Border.BorderAround([OfficeOpenXml.Style.ExcelBorderStyle]::Medium)
 
         $pkg.Save()
         $pkg.Dispose()
