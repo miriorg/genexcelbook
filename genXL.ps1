@@ -149,7 +149,12 @@ end {
         for ($r = 0; $r -lt $script:processedData.Count; $r++) {
             $rowItem = $script:processedData[$r]
             for ($c = 0; $c -lt $headers.Count; $c++) {
-                $ws.Cells[($r + 2), ($c + 1)].Value = $rowItem.($headers[$c])
+                $cellValue = $rowItem.($headers[$c])
+                # D列(3)・E列(4)で数値として扱える場合は数値型に変換してセット
+                if (($c -eq 3 -or $c -eq 4) -and ($cellValue -as [double])) {
+                    $cellValue = $cellValue -as [double]
+                }
+                $ws.Cells[($r + 2), ($c + 1)].Value = $cellValue
             }
         }
 
@@ -196,9 +201,12 @@ end {
         $ws.Column(5).Width = 10.08
         $ws.Column(6).Width = 33.16
         $ws.Column(7).Width = 22.83
+        $ws.Column(8).Width = 22.83
+        $ws.Column(9).Width = 19.33
+        $ws.Column(10).Width = 33.16
         $ws.Column(11).Width = 29
         $ws.Column(12).Width = 30
-        $ws.Column(13).Width = 30
+        $ws.Column(13).Width = 34.14
 
         # 行の高さ
         $ws.Row(1).Height = 39
